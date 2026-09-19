@@ -3,6 +3,7 @@ import {animateVehicleModel,releaseCar} from './custom-car.mjs';
 import {VEHICLE_TYPES,vehicleCategory} from '../shared/vehicle-types.mjs';
 import {carSeats} from '../shared/car-seats.mjs';
 import {createDefaultCar} from './default-car.mjs';
+import {runwayFloor,stepPlane} from './flight/FlightAdapter.mjs';
 
 export const VEHICLES={bike:{name:'单车',max:9,accel:3,reverse:2,radius:.4,length:1.8},...VEHICLE_TYPES};
 const approach=(a,b,rate,dt)=>a+(b-a)*(1-Math.exp(-rate*dt));
@@ -28,19 +29,18 @@ function carStep(v,input,dt,canMove){
     v.x=x;v.z=z;v.heading=heading;v.travelHeading=travel;
   }
 }
-export function driveStep(v,input,dt,canMove){
-  if(v.type==='plane'||v.type==='boat'){
-    dt=Math.max(0,Math.min(dt,.05));const c=VEHICLES[v.type],plane=v.type==='plane',steps=Math.max(1,Math.ceil(dt*120));
+export function driveStep(v,input,dt,canMove,floorAt){
+  if(v.type==='plane'){stepPlane(v,input,dt,canMove,floorAt);return;}
+  if(v.type==='boat'){
+    dt=Math.max(0,Math.min(dt,.05));const c=VEHICLES[v.type],steps=Math.max(1,Math.ceil(dt*120));
     for(let i=0;i<steps;i++){
-      const step=dt/steps,throttle=Number(!!input.forward)-Number(!!input.back),drag=input.brake?10:plane?.18:.8;
+      const step=dt/steps,throttle=Number(!!input.forward)-Number(!!input.back),drag=input.brake?10:.8;
       v.speed=throttle&&!input.brake?T.MathUtils.clamp(v.speed+throttle*c.accel*step,-c.reverse,c.max):Math.sign(v.speed)*Math.max(0,Math.abs(v.speed)-drag*step);
       const steer=Number(!!input.left)-Number(!!input.right);v.steerAngle=approach(v.steerAngle||0,steer*.3,4,step);
       const heading=v.heading+v.steerAngle*Math.min(1.5,Math.abs(v.speed)*.15)*Math.sign(v.speed)*step;
-      const rise=plane?(v.speed>12?(Number(!!input.up)-Number(!!input.down))*Math.min(9,v.speed*.25):0):0;
-      const y=plane?Math.min(600,(v.y||0)+(rise-(v.airborne&&v.speed<12?3:0))*step):v.y;
       const x=v.x-Math.sin(heading)*v.speed*step,z=v.z-Math.cos(heading)*v.speed*step;
-      if(!canMove(x,z,heading,y)){v.speed=0;break;}
-      v.x=x;v.z=z;v.heading=heading;v.y=y;v.pitch=plane?approach(v.pitch||0,Math.atan2(rise,Math.max(12,v.speed)),3,step):0;
+      if(!canMove(x,z,heading,v.y)){v.speed=0;break;}
+      v.x=x;v.z=z;v.heading=heading;v.pitch=0;
     }return;
   }
   if(v.type==='car'){carStep(v,input,Math.max(0,Math.min(dt,.05)),canMove);return;}
@@ -80,10 +80,11 @@ export function createVehicleModel(type){
   const pedals=[];if(type==='bike')for(const side of [-1,1])pedals.push(box(side*.22,.5,.05,.2,.06,.16,'metal'));
   return {group,wheels,pedals,...(type!=='bike'?{seats:carSeats(undefined,type)}:{})};
 }
-export function createVehicles(scene,{surface,ground=surface,obstacle,origin}){
+export function createVehicles(scene,{surface,ground=surface,obstacle,origin,roofAt=surface}){
   const items=['bike','car'].map((type,i)=>{const model=createVehicleModel(type);scene.add(model.group);return {...model,type,x:i?4:-4,z:42,heading:0,speed:0,crankPhase:0,y:null};});
   let active=null,personal=null,orbit=0,pitch=.3,chaseHeading=0,lookIdle=0;const firstPersonLook={yaw:0,pitch:-.08};
-  function rebase(){const o=origin();for(const v of items){v.group.position.set(v.x-o.x*70,v.y??0,v.z-o.z*70);v.group.rotation.set(v.pitch||0,v.heading,0,'YXZ');v.group.updateMatrixWorld(true);}}
+  const planeFloor=runwayFloor(roofAt);
+  function rebase(){const o=origin();for(const v of items){v.group.position.set(v.x-o.x*70,v.y??0,v.z-o.z*70);v.group.rotation.set(v.pitch||0,v.heading,v.roll||0,'YXZ');v.group.updateMatrixWorld(true);}}
   function clear(v,x,z,heading,base){
     const c=VEHICLES[v.type],boat=v.type==='boat',plane=v.type==='plane';
     for(const along of [-c.length/2+.2,0,c.length/2-.2])for(const side of plane||boat?[-c.radius,0,c.radius]:[0]){
@@ -100,7 +101,7 @@ export function createVehicles(scene,{surface,ground=surface,obstacle,origin}){
     replacePersonal(model){if(!personal){releaseCar(model.group);return;}releaseCar(personal.group);Object.assign(personal,model);scene.add(personal.group);rebase();},
     summon(x,z,heading,model,type='car'){
       vehicleCategory(type);
-      if(personal)return false;const v={type,x,z,heading,speed:0,crankPhase:0,y:null,returnPosition:{x,y:surface(x,z)+1.7,z}};
+      if(personal)return false;const v={type,x,z,heading,speed:0,crankPhase:0,y:null,gamma:0,theta:0,bank:0,returnPosition:{x,y:surface(x,z)+1.7,z}};
       let found=false;search:for(const distance of type==='boat'?[3,4.5,6]:[type==='plane'?10:6])for(const angle of [0,-Math.PI/4,Math.PI/4,Math.PI/2,-Math.PI/2,Math.PI]){const px=x-Math.sin(heading+angle)*distance,pz=z-Math.cos(heading+angle)*distance,h=type==='boat'?-.35:surface(px,pz);if((type!=='plane'||h>=.5)&&clear(v,px,pz,heading,h)){v.x=px;v.z=pz;v.y=h;found=true;break search;}}
       if(!found)return false;Object.assign(v,model||createVehicleModel(type));personal=v;items.push(v);scene.add(v.group);rebase();return true;
     },
@@ -109,12 +110,12 @@ export function createVehicles(scene,{surface,ground=surface,obstacle,origin}){
     get firstPersonLook(){return {...firstPersonLook};},
     rebase,
     targets(){return items.map(v=>({root:v.group,node:v.group,position:[0,.8,0],range:v.type==='plane'?10:v.type==='boat'?8:3.2,yaw:v.heading,vehicle:v}));},
-    enter(v){active=v;v.speed=v.coasting?v.speed:0;v.coasting=false;v.yawRate=0;v.drift=0;v.travelHeading=v.heading;v.steer=0;v.reverseWait=0;orbit=0;pitch=.3;chaseHeading=v.heading;lookIdle=0;firstPersonLook.yaw=0;firstPersonLook.pitch=-.08;},exit,
+    enter(v){active=v;v.speed=v.coasting?v.speed:0;v.coasting=false;v.yawRate=0;v.drift=0;v.travelHeading=v.heading;v.steer=0;v.reverseWait=0;v.gamma=0;v.theta=0;v.bank=0;v.pitch=0;v.roll=0;v.crashed=false;orbit=0;pitch=.3;chaseHeading=v.heading;lookIdle=0;firstPersonLook.yaw=0;firstPersonLook.pitch=-.08;},exit,
     stop(){if(active)active.speed=0;active=null;},
     look(dx,dy,firstPerson=false){if(firstPerson){firstPersonLook.yaw=T.MathUtils.clamp(firstPersonLook.yaw-dx*.0025,-2.65,2.65);firstPersonLook.pitch=T.MathUtils.clamp(firstPersonLook.pitch-dy*.0025,-1.1,.9);return;}orbit-=dx*.0025;pitch=T.MathUtils.clamp(pitch+dy*.002,-.05,.9);lookIdle=1.5;},
     blocks(x,z,r=.35,y=surface(x,z)){return items.some(v=>{if(y+1.7<v.y||y>v.y+(VEHICLES[v.type].height||2))return false;const dx=x-v.x,dz=z-v.z,c=VEHICLES[v.type],side=dx*Math.cos(v.heading)-dz*Math.sin(v.heading),along=dx*Math.sin(v.heading)+dz*Math.cos(v.heading);return Math.abs(side)<c.radius+r&&Math.abs(along)<c.length/2+r;});},
     update(dt,keys,enabled,camera){
-      for(const v of items){if(v.y===null)v.y=surface(v.x,v.z);if(v===active&&enabled){driveStep(v,{forward:keys.has('KeyW'),back:keys.has('KeyS'),left:keys.has('KeyA'),right:keys.has('KeyD'),brake:keys.has('Space'),up:keys.has('KeyE'),down:keys.has('KeyQ'),handbrake:keys.has('ShiftLeft')||keys.has('ShiftRight')},dt,(x,z,h,y)=>clear(v,x,z,h,v.type==='plane'?Math.max(y,surface(x,z)>=.5&&surface(x,z)<=v.y+.45?surface(x,z):.8):v.y));if(v.type==='boat')v.y=-.35;else if(v.type==='plane'){v.y=Math.max(v.y,surface(v.x,v.z)>=.5?surface(v.x,v.z):.8);v.airborne=v.y>surface(v.x,v.z)+.5;}else v.y=surface(v.x,v.z);}else if(v.coasting&&enabled){
+      for(const v of items){if(v.y===null)v.y=surface(v.x,v.z);if(v===active&&enabled){driveStep(v,{forward:keys.has('KeyW'),back:keys.has('KeyS'),left:keys.has('KeyA'),right:keys.has('KeyD'),brake:keys.has('Space'),up:keys.has('KeyE'),down:keys.has('KeyQ'),handbrake:keys.has('ShiftLeft')||keys.has('ShiftRight')},dt,(x,z,h,y)=>clear(v,x,z,h,v.type==='plane'?Math.max(y,surface(x,z)>=.5&&surface(x,z)<=v.y+.45?surface(x,z):.8):v.y),v.type==='plane'?planeFloor:null);if(v.type==='boat')v.y=-.35;else if(v.type==='plane'){v.y=Math.max(v.y,planeFloor(v.x,v.z));v.airborne=v.y>surface(v.x,v.z)+.5;}else v.y=surface(v.x,v.z);}else if(v.coasting&&enabled){
         const beforeX=v.x,beforeZ=v.z,sign=Math.sign(v.speed);driveStep(v,{},dt,(x,z,h)=>clear(v,x,z,h,v.y));v.y=surface(v.x,v.z);
         const travel=Math.hypot(v.x-beforeX,v.z-beforeZ)*sign;v.crankPhase+=travel*1.4;for(const wheel of v.wheels){wheel.spin.rotation.x-=travel/wheel.radius;wheel.pivot.rotation.y=wheel.front?v.steerAngle||0:0;}
         animateVehicleModel(v,v.crankPhase,v.speed,v.steerAngle);v.speed=Math.sign(v.speed)*Math.max(0,Math.abs(v.speed)-1.8*Math.min(.05,Math.max(0,dt)));if(Math.abs(v.speed)<.05){v.speed=0;v.yawRate=0;v.coasting=false;}

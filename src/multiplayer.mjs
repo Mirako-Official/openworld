@@ -79,7 +79,7 @@ export function createMultiplayer(scene,{origin,localVehicle=()=>null,onError,on
         releaseCar(car.group);Object.assign(car,prepareCarModel(gltf.scene,type),{modelId:wanted});scene.add(car.group);
       }).catch(()=>{p.carRetry=performance.now()+15000;}).finally(()=>{p.carLoading=false;loading--;});
     }
-    p.carPose=p.carPose?blendPose(p.carPose,target,1-Math.exp(-14*dt)):{...target};const pose=p.carPose;car.group.position.set(pose.x-o.x*70,pose.y,pose.z-o.z*70);car.group.rotation.set(pose.pitch||0,pose.yaw,0,'YXZ');car.group.traverse(mesh=>{mesh.castShadow=false;});
+    p.carPose=p.carPose?blendPose(p.carPose,target,1-Math.exp(-14*dt)):{...target};const pose=p.carPose;car.group.position.set(pose.x-o.x*70,pose.y,pose.z-o.z*70);car.group.rotation.set(pose.pitch||0,pose.yaw,pose.roll||0,'YXZ');car.group.traverse(mesh=>{mesh.castShadow=false;});
     const propeller=car.group.getObjectByName('propeller');if(propeller)propeller.rotation.z=target.phase*8;
     for(const wheel of car.wheels){wheel.spin.rotation.x=-target.phase/(1.4*wheel.radius);wheel.pivot.rotation.y=wheel.front?target.steer:0;}
     animateVehicleModel(car,target.phase,target.speed,target.steer);

@@ -25,7 +25,7 @@ export function createCockpit(){
   return {update(vehicle,enabled,keys,paused,dt,walking=true){
     const driving=walking&&!!vehicle,car=vehicle?.type==='car';help.hidden=!driving;document.body.dataset.driving=String(driving);document.body.dataset.cockpit=String(enabled&&driving&&car);if(!driving)return;
     const handbrake=keys.has('ShiftLeft')||keys.has('ShiftRight'),state=drivingDisplay(vehicle.speed,keys.has('Space')||handbrake||vehicle.speed>.05&&keys.has('KeyS'));
-    summary.textContent=({car:'小汽车',bike:'单车',plane:'飞机',boat:'船'})[vehicle.type]+' · '+state.speed+' km/h';handbrakeHelp.hidden=!car&&vehicle.type!=='plane';handbrakeHelp.innerHTML=vehicle.type==='plane'?'<kbd>E / Q</kbd> 抬升 / 下降':'<kbd>Shift</kbd> 手刹';if(vehicle.type==='plane')summary.textContent+=' · 高度 '+Math.round(vehicle.y)+' m';
+    summary.textContent=({car:'小汽车',bike:'单车',plane:'飞机',boat:'船'})[vehicle.type]+' · '+state.speed+' km/h';handbrakeHelp.hidden=!car&&vehicle.type!=='plane';handbrakeHelp.innerHTML=vehicle.type==='plane'?'<kbd>E / Q</kbd> 抬头 / 低头 · <kbd>A / D</kbd> 转向 / 滚转':'<kbd>Shift</kbd> 手刹';if(vehicle.type==='plane')summary.textContent+=' · 高度 '+Math.round(vehicle.y)+' m';
     if(car)updateInstruments(vehicle,state,paused?'已暂停':handbrake?'手刹':state.braking?'制动中':state.speed?'行驶中':'就绪');
   }};
 }

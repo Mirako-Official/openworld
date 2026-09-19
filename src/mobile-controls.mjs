@@ -12,7 +12,7 @@ export function createMobileControls(world){
   const stick=document.createElement('div');stick.className='mobile-stick';stick.setAttribute('aria-label','移动摇杆');stick.setAttribute('role','application');
   const knob=document.createElement('span');knob.className='mobile-stick-knob';stick.append(knob);
   const actions=document.createElement('div');actions.className='mobile-actions';
-  const buttons=[['KeyF','交互','F','primary interact'],['Space','跳跃 / 刹车','⇧','primary action'],['ShiftLeft','奔跑 / 手刹','»','boost'],['KeyO','切换视角','◉','view'],['KeyP','载具','◇','vehicle'],['KeyE','上升','↑','flight rise'],['KeyQ','下降','↓','flight descend']];
+  const buttons=[['KeyF','交互','F','primary interact'],['Space','跳跃 / 刹车','⇧','primary action'],['ShiftLeft','奔跑 / 手刹','»','boost'],['KeyO','切换视角','◉','view'],['KeyP','载具','◇','vehicle'],['KeyE','抬头','↑','flight pitch up'],['KeyQ','低头','↓','flight pitch down']];
   for(const [code,label,icon,className] of buttons){const button=document.createElement('button');button.type='button';button.dataset.code=code;button.className=className;button.setAttribute('aria-label',label);button.innerHTML=`<strong>${icon}</strong><span>${label}</span>`;actions.append(button);}
   root.append(stick,actions);document.body.append(root);
   let flightState=null;function syncContext(){const next=!!world.mobileFlightActive;if(next!==flightState){flightState=next;root.dataset.flight=String(next);}requestAnimationFrame(syncContext);}syncContext();
