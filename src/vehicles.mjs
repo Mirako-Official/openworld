@@ -3,6 +3,7 @@ import {animateVehicleModel,releaseCar} from './custom-car.mjs';
 import {VEHICLE_TYPES,vehicleCategory} from '../shared/vehicle-types.mjs';
 import {carSeats} from '../shared/car-seats.mjs';
 import {createDefaultCar} from './default-car.mjs';
+import {createAutodrive} from './autodrive.mjs';
 import {runwayFloor,stepPlane} from './flight/FlightAdapter.mjs';
 
 export const VEHICLES={bike:{name:'单车',max:9,accel:3,reverse:2,radius:.4,length:1.8},...VEHICLE_TYPES};
@@ -16,7 +17,7 @@ function carStep(v,input,dt,canMove){
     if(input.brake||input.handbrake||opposing){const decel=input.brake?16:opposing?12:3.5;v.speed=Math.sign(v.speed)*Math.max(0,Math.abs(v.speed)-decel*step);v.reverseWait=opposing?.2:0;}
     else if(throttle){if(v.reverseWait>0)v.reverseWait=Math.max(0,v.reverseWait-step);else{const acceleration=throttle>0?c.accel*(1-.4*Math.max(0,v.speed)/c.max):4;v.speed=T.MathUtils.clamp(v.speed+throttle*acceleration*step,-c.reverse,c.max);}}
     else{v.speed=Math.sign(v.speed)*Math.max(0,Math.abs(v.speed)-(.35+.0018*v.speed*v.speed)*step);v.reverseWait=0;}
-    const steer=Number(!!input.left)-Number(!!input.right),speed=Math.abs(v.speed);
+    const steer=Number.isFinite(input.steering)?T.MathUtils.clamp(input.steering,-1,1):Number(!!input.left)-Number(!!input.right),speed=Math.abs(v.speed);
     v.steer=approach(v.steer,steer,steer?(steer*v.steer<0?12:8):11,step);
     v.steerAngle=v.steer*(.62/(1+speed*.045+speed*speed*.0015));
     v.drift=approach(v.drift,input.handbrake&&speed>4?1:0,input.handbrake?5:3.5,step);
@@ -80,7 +81,15 @@ export function createVehicleModel(type){
   const pedals=[];if(type==='bike')for(const side of [-1,1])pedals.push(box(side*.22,.5,.05,.2,.06,.16,'metal'));
   return {group,wheels,pedals,...(type!=='bike'?{seats:carSeats(undefined,type)}:{})};
 }
-export function createVehicles(scene,{surface,ground=surface,obstacle,origin,roofAt=surface}){
+export function createVehicles(scene,{surface,ground=surface,obstacle,origin,roofAt=surface,traffic=()=>[]}){
+  const autopilot=createAutodrive({canDrive(v,p,heading){
+    if(!clear(v,p[0],p[2],heading,p[1]))return false;
+    for(const other of traffic()){
+      if(Math.abs(other.y-p[1])>2.5)continue;
+      const c=VEHICLES[other.type]||VEHICLES.car,dx=p[0]-other.x,dz=p[2]-other.z,angle=other.heading||0;
+      if(Math.abs(dx*Math.cos(angle)-dz*Math.sin(angle))<c.radius+1.2&&Math.abs(dx*Math.sin(angle)+dz*Math.cos(angle))<c.length/2+2.4)return false;
+    }return true;
+  }});
   const items=['bike','car'].map((type,i)=>{const model=createVehicleModel(type);scene.add(model.group);return {...model,type,x:i?4:-4,z:42,heading:0,speed:0,crankPhase:0,y:null};});
   let active=null,personal=null,orbit=0,pitch=.3,chaseHeading=0,lookIdle=0;const firstPersonLook={yaw:0,pitch:-.08};
   const planeFloor=runwayFloor(roofAt);
@@ -97,6 +106,7 @@ export function createVehicles(scene,{surface,ground=surface,obstacle,origin,roo
   }
   function exit(checkOnly=false){if(!active)return null;const v=active,c=VEHICLES[v.type];if((v.type==='boat'||v.type==='plane')&&Math.abs(v.speed)>1.5)return null;for(const distance of v.type==='boat'?[c.radius+1,4,6]:[c.radius+1])for(const side of [-1,1])for(const along of [0,-c.length/2-1,c.length/2+1]){const x=v.x+Math.cos(v.heading)*distance*side-Math.sin(v.heading)*along,z=v.z-Math.sin(v.heading)*distance*side-Math.cos(v.heading)*along,h=surface(x,z);if(Math.abs(h-v.y)<(v.type==='boat'?6:1)&&!obstacle(x,z,h,.35)){if(checkOnly)return true;active=null;v.coasting=v.type==='car'&&Math.abs(v.speed)>.01;if(!v.coasting)v.speed=0;return {x,y:h+1.7,z,heading:v.heading};}}return null;}
   return {
+    autopilot,
     get personal(){return personal;},
     replacePersonal(model){if(!personal){releaseCar(model.group);return;}releaseCar(personal.group);Object.assign(personal,model);scene.add(personal.group);rebase();},
     summon(x,z,heading,model,type='car'){
@@ -115,7 +125,8 @@ export function createVehicles(scene,{surface,ground=surface,obstacle,origin,roo
     look(dx,dy,firstPerson=false){if(firstPerson){firstPersonLook.yaw=T.MathUtils.clamp(firstPersonLook.yaw-dx*.0025,-2.65,2.65);firstPersonLook.pitch=T.MathUtils.clamp(firstPersonLook.pitch-dy*.0025,-1.1,.9);return;}orbit-=dx*.0025;pitch=T.MathUtils.clamp(pitch+dy*.002,-.05,.9);lookIdle=1.5;},
     blocks(x,z,r=.35,y=surface(x,z)){return items.some(v=>{if(y+1.7<v.y||y>v.y+(VEHICLES[v.type].height||2))return false;const dx=x-v.x,dz=z-v.z,c=VEHICLES[v.type],side=dx*Math.cos(v.heading)-dz*Math.sin(v.heading),along=dx*Math.sin(v.heading)+dz*Math.cos(v.heading);return Math.abs(side)<c.radius+r&&Math.abs(along)<c.length/2+r;});},
     update(dt,keys,enabled,camera){
-      for(const v of items){if(v.y===null)v.y=surface(v.x,v.z);if(v===active&&enabled){driveStep(v,{forward:keys.has('KeyW'),back:keys.has('KeyS'),left:keys.has('KeyA'),right:keys.has('KeyD'),brake:keys.has('Space'),up:keys.has('KeyE'),down:keys.has('KeyQ'),handbrake:keys.has('ShiftLeft')||keys.has('ShiftRight')},dt,(x,z,h,y)=>clear(v,x,z,h,v.type==='plane'?Math.max(y,surface(x,z)>=.5&&surface(x,z)<=v.y+.45?surface(x,z):.8):v.y),v.type==='plane'?planeFloor:null);if(v.type==='boat')v.y=-.35;else if(v.type==='plane'){v.y=Math.max(v.y,planeFloor(v.x,v.z));v.airborne=v.y>surface(v.x,v.z)+.5;}else v.y=surface(v.x,v.z);}else if(v.coasting&&enabled){
+      if(!active)autopilot.reset();
+      for(const v of items){if(v.y===null)v.y=surface(v.x,v.z);if(v===active&&enabled){driveStep(v,autopilot.update(v,{forward:keys.has('KeyW'),back:keys.has('KeyS'),left:keys.has('KeyA'),right:keys.has('KeyD'),brake:keys.has('Space'),up:keys.has('KeyE'),down:keys.has('KeyQ'),handbrake:keys.has('ShiftLeft')||keys.has('ShiftRight')},dt),dt,(x,z,h,y)=>clear(v,x,z,h,v.type==='plane'?Math.max(y,surface(x,z)>=.5&&surface(x,z)<=v.y+.45?surface(x,z):.8):v.y),v.type==='plane'?planeFloor:null);if(v.type==='boat')v.y=-.35;else if(v.type==='plane'){v.y=Math.max(v.y,planeFloor(v.x,v.z));v.airborne=v.y>surface(v.x,v.z)+.5;}else v.y=surface(v.x,v.z);}else if(v.coasting&&enabled){
         const beforeX=v.x,beforeZ=v.z,sign=Math.sign(v.speed);driveStep(v,{},dt,(x,z,h)=>clear(v,x,z,h,v.y));v.y=surface(v.x,v.z);
         const travel=Math.hypot(v.x-beforeX,v.z-beforeZ)*sign;v.crankPhase+=travel*1.4;for(const wheel of v.wheels){wheel.spin.rotation.x-=travel/wheel.radius;wheel.pivot.rotation.y=wheel.front?v.steerAngle||0:0;}
         animateVehicleModel(v,v.crankPhase,v.speed,v.steerAngle);v.speed=Math.sign(v.speed)*Math.max(0,Math.abs(v.speed)-1.8*Math.min(.05,Math.max(0,dt)));if(Math.abs(v.speed)<.05){v.speed=0;v.yawRate=0;v.coasting=false;}

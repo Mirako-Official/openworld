@@ -1,6 +1,7 @@
 import {randomBytes,createHash} from 'node:crypto';
 import {fail} from './store.mjs';
 import {installCliOAuth} from './cli-oauth.mjs';
+import {installWatchaAuth,watchaReady} from './watcha-auth.mjs';
 const random=()=>randomBytes(32).toString('base64url');
 const hash=s=>createHash('sha256').update(s).digest('hex');
 function cookie(req,key){return (req.headers.cookie||'').split(';').map(s=>s.trim()).find(s=>s.startsWith(key+'='))?.slice(key.length+1)||'';}
@@ -14,7 +15,8 @@ export async function installAuth(app,store,config){
     if(row){req.user={id:row.id,login:row.login,admin:isAdmin(row.id)};req.csrf=row.csrf;}
     next();
   });
-  app.get('/api/session',(req,res)=>res.json({user:req.user||null,csrf:req.csrf||null,githubReady:!!(config.clientId&&config.clientSecret)}));
+  app.get('/api/session',(req,res)=>res.json({user:req.user||null,csrf:req.csrf||null,githubReady:!!(config.clientId&&config.clientSecret),watchaReady:watchaReady(config),loginReady:!!(config.clientId&&config.clientSecret)||watchaReady(config)}));
+  installWatchaAuth(app,store,config,session);
   (await installCliOAuth(app,store,config,session));
   app.post('/api/cli/login',async(req,res)=>{
     (await store.rate('cli-login:'+req.socket.remoteAddress,10,60000));
@@ -49,5 +51,5 @@ export async function installAuth(app,store,config){
     }catch{res.redirect('/game?auth=failed');}
   });
 }
-export function requireUser(req,res,next){if(!req.user)fail(401,'请先使用 GitHub 登录');if(!['GET','HEAD'].includes(req.method)&&(!req.csrf||req.headers['x-csrf-token']!==req.csrf))fail(403,'会话校验失败，请刷新页面');next();}
+export function requireUser(req,res,next){if(!req.user)fail(401,'请先登录');if(!['GET','HEAD'].includes(req.method)&&(!req.csrf||req.headers['x-csrf-token']!==req.csrf))fail(403,'会话校验失败，请刷新页面');next();}
 export function requireAdmin(req,res,next){requireUser(req,res,()=>{if(!req.user.admin)fail(403,'仅管理员可审核');next();});}

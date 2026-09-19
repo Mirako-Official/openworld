@@ -113,5 +113,5 @@ export function createMultiplayer(scene,{origin,localVehicle=()=>null,onError,on
         if(attached){p.avatar.root.position.set(attached.x-o.x*70,attached.y,attached.z-o.z*70);p.avatar.root.rotation.y=attached.yaw;p.label.position.copy(p.avatar.root.position).add(new T.Vector3(0,1.95,0));}
         p.avatar.setVehicleClip(vehicle);
       }
-    },get mapPlayers(){return Array.from(peers,([id,p])=>({id,name:p.name,x:p.pose.x,z:p.pose.z,active:p.pose.active})).filter(p=>p.active&&Number.isFinite(p.x)&&Number.isFinite(p.z));},dispose:stop};
+    },get trafficVehicles(){return [...peers.values()].flatMap(p=>{const c=p.carPose||p.target.personalCar;if(c)return [{x:c.x,y:c.y,z:c.z,heading:c.yaw,type:c.type||'car'}];return [];});},get mapPlayers(){return Array.from(peers,([id,p])=>({id,name:p.name,x:p.pose.x,z:p.pose.z,active:p.pose.active})).filter(p=>p.active&&Number.isFinite(p.x)&&Number.isFinite(p.z));},dispose:stop};
 }

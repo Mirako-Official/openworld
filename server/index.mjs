@@ -9,6 +9,8 @@ config.unlimitedPlotAreaUserIds=(process.env.UNLIMITED_PLOT_AREA_USER_IDS||'').s
 config.plotGrants=(process.env.PLOT_GRANTS||'').split(',').map(value=>value.trim()).filter(Boolean).map(value=>{const split=value.lastIndexOf(':');const name=value.slice(0,split).trim(),limit=Number(value.slice(split+1));if(split<1||!name||!Number.isSafeInteger(limit)||limit<1||limit>100)throw new Error('PLOT_GRANTS must use territory-name:limit entries');return {name,limit};});
 const host=process.env.HOST||'127.0.0.1';
 config.host=host;config.r2=storageConfig();
+config.watchaClientId=process.env.WATCHA_CLIENT_ID||'';
+config.watchaClientSecret=process.env.WATCHA_CLIENT_SECRET||'';
 config.devAvatarFile=process.env.DEV_AVATAR_FILE||'';
 config.devAvatarHide=(process.env.DEV_AVATAR_HIDE||'').split(',').map(s=>s.trim()).filter(Boolean);
 config.allowedOrigins=(process.env.ALLOWED_ORIGINS||'').split(',').map(s=>s.trim()).filter(Boolean);

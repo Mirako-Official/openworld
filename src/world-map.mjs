@@ -11,7 +11,7 @@ export function createWorldMap(world){
   let destination=null,route=null,routeWorker=null,routeRequest=0,routeBusy=false,routeTime=0,routeOrigin=null,routeTimer=null,arrived=false;
   const routeStatus=dialog.querySelector('[data-route-status]'),clearRoute=dialog.querySelector('[data-clear-route]'),miniRoute=mini.querySelector('.mini-route');
   const meters=n=>n>=1000?(n/1000).toFixed(1)+' km':Math.round(n)+' m';
-  function routeMessage(text){world.setNavigationRoute?.(route?.status==='ok'?route.points:[]);routeStatus.textContent=text;miniRoute.textContent=route?.status==='ok'?meters(route.distance):text.includes('规划')?'规划中…':text==='已到达导航点'?'已到达':'暂无路线';miniRoute.title=text;miniRoute.hidden=!destination;clearRoute.hidden=!destination;}
+  function routeMessage(text){world.setNavigationRoute?.(route?.status==='ok'?route.points:[],route?.status==='ok'?route.drivingPoints:[]);routeStatus.textContent=text;miniRoute.textContent=route?.status==='ok'?meters(route.distance):text.includes('规划')?'规划中…':text==='已到达导航点'?'已到达':'暂无路线';miniRoute.title=text;miniRoute.hidden=!destination;clearRoute.hidden=!destination;}
   function worker(){
     if(routeWorker)return routeWorker;
     routeWorker=new Worker('/navigation-worker.js',{type:'module'});
@@ -59,7 +59,7 @@ export function createWorldMap(world){
     for(const road of plan?.roads||[]){if(!road.points?.length)continue;c.beginPath();road.points.forEach((p,i)=>{const q=point(p[0],p[2]);i?c.lineTo(...q):c.moveTo(...q);});c.strokeStyle=road.bridge?'#e0e2dc':'#989d9c';c.lineWidth=Math.max(.8,road.width*v.scale*.72);c.stroke();}
     for(const row of layers.plots?rows:[]){const polygon=plotPolygon(row);c.beginPath();polygon.forEach(([x,z],i)=>{const p=point(x,z);i?c.lineTo(...p):c.moveTo(...p);});c.closePath();c.fillStyle=row.published?'#83b5d699':'#d5ad6399';c.fill();const p=point(row.cx,row.cz);c.fillStyle=row.published?'#9dd5ff':'#ecc886';c.fillRect(p[0]-3,p[1]-3,6,6);}
     if(route?.status==='ok'&&route.points.length){
-      c.beginPath();route.points.forEach((p,i)=>{const q=point(p[0],p[2]);i?c.lineTo(...q):c.moveTo(...q);});c.strokeStyle='#20152de6';c.lineWidth=canvas===small?7:9;c.stroke();c.strokeStyle='#bf8cff';c.lineWidth=canvas===small?3.5:5;c.stroke();
+      c.beginPath();(world.mapPose.vehicleType==='car'&&route.drivingPoints?.length?route.drivingPoints:route.points).forEach((p,i)=>{const q=point(p[0],p[2]);i?c.lineTo(...q):c.moveTo(...q);});c.strokeStyle='#20152de6';c.lineWidth=canvas===small?7:9;c.stroke();c.strokeStyle='#bf8cff';c.lineWidth=canvas===small?3.5:5;c.stroke();
     }
     if(destination){const [x,y]=point(destination.x,destination.z);c.save();c.translate(x,y);c.fillStyle='#d7b6ff';c.strokeStyle='#21152c';c.lineWidth=2;c.beginPath();c.moveTo(0,-9);c.lineTo(7,0);c.lineTo(0,9);c.lineTo(-7,0);c.closePath();c.fill();c.stroke();c.restore();}
     const pose=world.mapPose,p=point(pose.x,pose.z),occupied=[[p[0]-14,p[1]-14,p[0]+14,p[1]+14]];

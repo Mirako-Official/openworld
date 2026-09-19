@@ -1,11 +1,12 @@
 import {randomBytes,createHash} from 'node:crypto';
 import {requireUser} from './auth.mjs';
 import {fail} from './store.mjs';
+import {watchaReady} from './watcha-auth.mjs';
 const hash=s=>createHash('sha256').update(s).digest('hex');
 export async function installCliOAuth(app,store,config,session){
   const {db}=store;(await db.exec('CREATE TABLE IF NOT EXISTS cli_authorizations(secret TEXT PRIMARY KEY,code TEXT UNIQUE NOT NULL,expires INTEGER NOT NULL,user TEXT,status TEXT NOT NULL)'));
   app.post('/api/cli/authorize/start',async (req,res)=>{
-    (await store.rate('cli-auth-start:'+req.socket.remoteAddress,10,60000));if(!config.clientId||!config.clientSecret)fail(503,'站点尚未配置 GitHub 登录');
+    (await store.rate('cli-auth-start:'+req.socket.remoteAddress,10,60000));if(!(config.clientId&&config.clientSecret)&&!watchaReady(config))fail(503,'站点尚未配置登录服务');
     (await db.prepare('DELETE FROM cli_authorizations WHERE expires<?').run(Date.now()));const secret=randomBytes(32).toString('base64url'),code=randomBytes(6).toString('hex').toUpperCase();
     (await db.prepare('INSERT INTO cli_authorizations VALUES (?,?,?,NULL,?)').run(hash(secret),code,Date.now()+600000,'pending'));res.json({secret,code,url:config.url+'/cli-authorize?code='+code,expiresIn:600,interval:2});
   });
